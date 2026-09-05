@@ -111,7 +111,7 @@
         };
 
         // 5.1 Fetch danh sách store
-        while (stores.length < 200) {
+        while (stores.length < 2000) {
             try {
                 let r = await fetch(`https://api.bachhoaxanh.com/gw/Location/V2/GetStoresByLocation?provinceId=${pId}&wardId=0&pageSize=50&pageIndex=${page}`, config);
                 let j = await r.json();
@@ -122,7 +122,7 @@
             } catch (e) { break; }
         }
         
-        stores = stores.slice(0, 200);
+        stores = stores.slice(0, 2000);
         if (stores.length === 0) {
             modal.innerHTML = `<h3 style="color:#e74c3c;">❌ Không có chi nhánh nào!</h3><button onclick="document.getElementById('bhx-overlay-pro').remove()" style="padding:10px; background:#e74c3c; color:#fff; border:none; border-radius:6px; width:100%; margin-top:10px;">Đóng</button>`;
             return;
