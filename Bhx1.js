@@ -28,6 +28,7 @@
     const PRODUCT_URL = pathParts[1];
     const PRODUCT_NAME = document.querySelector('h1') ? document.querySelector('h1').innerText.trim() : PRODUCT_URL;
 
+    // Dọn dẹp giao diện cũ nếu bấm nhiều lần
     const oldOverlay = document.getElementById("bhx-overlay-pro");
     if (oldOverlay) oldOverlay.remove();
 
@@ -46,7 +47,7 @@
     document.body.appendChild(overlay);
 
     // ==========================================
-    // 4. LẤY DANH SÁCH TỈNH THÀNH
+    // 4. LẤY DANH SÁCH TỈNH THÀNH (API)
     // ==========================================
     try {
         const res = await fetch("https://api.bachhoaxanh.com/gw/LocationV3/GetFull", {
@@ -72,8 +73,9 @@
 
         let optionsHTML = provinces.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
 
+        // Cập nhật UI cho phép chọn Tỉnh
         modal.innerHTML = `
-            <h3 style="margin:0 0 10px; color:#2c3e50; font-size:16px;">🎯 SP: ${PRODUCT_NAME}</h3>
+            <h3 style="margin:0 0 10px; color:#2c3e50; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🎯 SP: ${PRODUCT_NAME}</h3>
             <label style="font-size:13px; color:#555; font-weight:bold;">📍 Chọn Khu Vực Quét:</label>
             <select id="bhx-sel" style="width:100%; padding:10px; font-size:14px; border:2px solid #bdc3c7; border-radius:8px; outline:none; margin-top:8px;">
                 ${optionsHTML}
@@ -100,10 +102,7 @@
     // 5. CORE LOGIC: QUÉT KHO ĐA LUỒNG
     // ==========================================
     async function startScan(pId, pName) {
-        modal.innerHTML = `<div style="text-align:center;">
-            <h3 style="color:#3498db; margin:0 0 5px;">⏳ Đang lấy danh sách cửa hàng...</h3>
-            <p style="font-size:12px; color:#555;">Khu vực: ${pName}</p>
-        </div>`;
+        modal.innerHTML = `<div style="text-align:center;"><h3 style="color:#3498db; margin:0 0 5px;">⏳ Đang quét dữ liệu...</h3><p style="font-size:12px; color:#555;">Khu vực: ${pName}</p></div>`;
         
         let stores = [];
         let page = 0;
@@ -111,31 +110,30 @@
             headers: { accept: "application/json", platform: "webnew", xapikey: "bhx-api-core-2022", "cache-control": "no-cache" }
         };
 
-        // 5.1 Nâng giới hạn lên 2000 cửa hàng
-        const MAX_STORES = 2000;
+        const MAX_STORES = 2000; // ĐÃ NÂNG CẤP LÊN 2000 CỬA HÀNG
+
+        // 5.1 Fetch danh sách store (Chạy đến khi nào hết chi nhánh hoặc chạm mốc 2000)
         while (stores.length < MAX_STORES) {
             try {
                 let r = await fetch(`https://api.bachhoaxanh.com/gw/Location/V2/GetStoresByLocation?provinceId=${pId}&wardId=0&pageSize=50&pageIndex=${page}`, config);
                 let j = await r.json();
                 let d = j?.data?.stores || j?.Value?.stores || [];
-                if (d.length === 0) break; // Hết dữ liệu thì thoát vòng lặp
+                
+                // Nếu trang này trả về rỗng -> Đã lấy hết sạch toàn bộ cửa hàng của tỉnh đó -> Dừng vòng lặp
+                if (d.length === 0) break;
+                
                 stores.push(...d);
                 page++;
             } catch (e) { break; }
         }
         
+        // Cắt mảng tối đa 2000 (đề phòng vượt quá)
         stores = stores.slice(0, MAX_STORES);
+        
         if (stores.length === 0) {
             modal.innerHTML = `<h3 style="color:#e74c3c;">❌ Không có chi nhánh nào!</h3><button onclick="document.getElementById('bhx-overlay-pro').remove()" style="padding:10px; background:#e74c3c; color:#fff; border:none; border-radius:6px; width:100%; margin-top:10px;">Đóng</button>`;
             return;
         }
-
-        // Cập nhật giao diện sang Đang quét kho
-        modal.innerHTML = `<div style="text-align:center;">
-            <h3 style="color:#3498db; margin:0 0 5px;">🔎 Đang quét kho hàng...</h3>
-            <p style="font-size:12px; color:#555;">Khu vực: ${pName} (${stores.length} cửa hàng)</p>
-            <div id="bhx-progress-text" style="font-size:16px; font-weight:bold; color:#e67e22; margin-top:15px; padding:10px; background:#fff3e0; border-radius:8px;">Đã quét: 0/${stores.length} (0%)</div>
-        </div>`;
 
         // 5.2 Check từng store
         async function check(s) {
@@ -158,29 +156,22 @@
             }
         }
 
-        // 5.3 Chạy đa luồng (Concurrency: 20 để quét >1000 store nhanh hơn)
+        // 5.3 Chạy đa luồng (Concurrency: 20 luồng cùng lúc cho nhanh)
         let results = [];
         for (let i = 0; i < stores.length; i += 20) {
             let batch = stores.slice(i, i + 20);
             results.push(...(await Promise.all(batch.map(s => check(s)))));
-            
-            // Cập nhật phần trăm tiến độ ra giao diện
-            let percent = Math.round((results.length / stores.length) * 100);
-            let progEl = document.getElementById("bhx-progress-text");
-            if (progEl) {
-                progEl.innerHTML = `Đã quét: ${results.length}/${stores.length} <br> <span style="font-size:20px;">${percent}%</span>`;
-            }
         }
 
-        // 5.4 Phân tích và render kết quả
+        // 5.4 Phân tích và render kết quả (CÒN HÀNG LÊN TRƯỚC)
         results.sort((a, b) => a.isAvail === b.isAvail ? 0 : (a.isAvail ? -1 : 1));
         let inStockCount = results.filter(x => x.isAvail).length;
 
-        // In tất cả kết quả không giới hạn
+        // Render TOÀN BỘ danh sách có bao nhiêu in bấy nhiêu
         let rowsHTML = results.map(r => `
             <tr style="border-bottom:1px solid #eee; font-size:12px;">
                 <td style="padding:6px; color:#555;">${r.id}</td>
-                <td style="padding:6px; max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.address}</td>
+                <td style="padding:6px; max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${r.address}">${r.address}</td>
                 <td style="padding:6px; font-weight:bold; color:${r.isAvail ? '#27ae60' : '#e74c3c'}">${r.isAvail ? 'CÒN' : 'HẾT'}</td>
                 <td style="padding:6px;">${r.priceTxt}</td>
             </tr>
@@ -188,11 +179,13 @@
 
         modal.style.width = "95%";
         modal.style.maxWidth = "450px";
+        
+        // max-height:300px giúp tạo thanh cuộn bên trong bảng, không làm tràn màn hình đt dù có 1000 dòng
         modal.innerHTML = `
-            <h3 style="margin:0 0 10px; font-size:16px;">📊 Báo Cáo (${inStockCount}/${results.length} KHO CÒN HÀNG)</h3>
-            <div style="max-height:300px; overflow-y:auto; border:1px solid #ddd; border-radius:6px; margin-bottom:15px; background:#fafafa;">
+            <h3 style="margin:0 0 10px; font-size:16px;">📊 KẾT QUẢ (${inStockCount}/${results.length} KHO CÒN HÀNG)</h3>
+            <div style="max-height:300px; overflow-y:auto; border:1px solid #ddd; border-radius:6px; margin-bottom:15px;">
                 <table style="width:100%; border-collapse:collapse; text-align:left;">
-                    <thead style="background:#f1f2f6; position:sticky; top:0; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                    <thead style="background:#f1f2f6; position:sticky; top:0;">
                         <tr>
                             <th style="padding:8px 6px;">Mã</th>
                             <th style="padding:8px 6px;">Chi Nhánh</th>
