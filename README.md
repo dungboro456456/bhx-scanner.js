@@ -1,1 +1,0 @@
-# bhx-scanner.js
