@@ -1,7 +1,4 @@
 (async function initBHXScanner() {
-    // ==========================================
-    // 1. HỆ THỐNG THÔNG BÁO (TOAST UI)
-    // ==========================================
     function showToast(message, isError = false) {
         let toast = document.createElement("div");
         toast.innerHTML = message;
@@ -28,9 +25,6 @@
     const oldOverlay = document.getElementById("bhx-overlay-pro");
     if (oldOverlay) oldOverlay.remove();
 
-    // ==========================================
-    // 2. TẠO KHUNG GIAO DIỆN CHỌN TỈNH
-    // ==========================================
     const overlay = document.createElement("div");
     overlay.id = "bhx-overlay-pro";
     overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); z-index:9999998; display:flex; justify-content:center; align-items:center; font-family:Arial;";
@@ -90,9 +84,6 @@
         modal.innerHTML = `<h3 style="color:#c0392b;">❌ Lỗi: ${e.message}</h3><button onclick="document.getElementById('bhx-overlay-pro').remove()" style="padding:10px; background:#e74c3c; color:#fff; border:none; border-radius:6px; width:100%;">Đóng</button>`;
     }
 
-    // ==========================================
-    // 3. CORE LOGIC: QUÉT KHO ĐA LUỒNG
-    // ==========================================
     async function startScan(pId, pName) {
         modal.innerHTML = `<div style="text-align:center;"><h3 style="color:#3498db; margin:0 0 5px;">⏳ Đang quét dữ liệu...</h3><p style="font-size:12px; color:#555;">Khu vực: ${pName}</p></div>`;
         
@@ -102,16 +93,15 @@
             headers: { accept: "application/json", platform: "webnew", xapikey: "bhx-api-core-2022", "cache-control": "no-cache" }
         };
 
-        const MAX_STORES = 2000; // ĐÃ NÂNG LÊN 2000 ĐỂ BAO TRỌN TP.HCM
+        const MAX_STORES = 2000;
 
-        // Lấy danh sách Store cho đến khi hết hoặc chạm 2000
         while (stores.length < MAX_STORES) {
             try {
                 let r = await fetch(`https://api.bachhoaxanh.com/gw/Location/V2/GetStoresByLocation?provinceId=${pId}&wardId=0&pageSize=50&pageIndex=${page}`, config);
                 let j = await r.json();
                 let d = j?.data?.stores || j?.Value?.stores || [];
                 
-                if (d.length === 0) break; // Hết dữ liệu thì dừng
+                if (d.length === 0) break;
                 
                 stores.push(...d);
                 page++;
@@ -125,7 +115,6 @@
             return;
         }
 
-        // Hàm kiểm tra từng kho
         async function check(s) {
             try {
                 let r = await fetch(`https://api.bachhoaxanh.com/gw/Product/GetProductDetail?provinceId=${pId}&wardId=${s.wardId}&districtId=${s.districtId||0}&storeId=${s.storeId}&CategoryUrl=${CATEGORY_URL}&ProductUrl=${PRODUCT_URL}&_t=${Date.now()}`, config);
@@ -146,30 +135,28 @@
             }
         }
 
-        // Chạy đa luồng (20 request/lượt)
         let results = [];
         for (let i = 0; i < stores.length; i += 20) {
             let batch = stores.slice(i, i + 20);
             results.push(...(await Promise.all(batch.map(s => check(s)))));
         }
 
-        // Sắp xếp: CÒN HÀNG LÊN TRƯỚC
         results.sort((a, b) => a.isAvail === b.isAvail ? 0 : (a.isAvail ? -1 : 1));
         let inStockCount = results.filter(x => x.isAvail).length;
 
-        // Render Bảng kết quả (CÓ CỘT STT)
-        let rowsHTML = results.map((r, index) => `
+        // Đã THÊM CỘT STT vào bảng kết quả giao diện
+        let rowsHTML = results.map((r, idx) => `
             <tr style="border-bottom:1px solid #eee; font-size:12px;">
-                <td style="padding:6px; color:#555; font-weight:bold; text-align:center;">${index + 1}</td>
+                <td style="padding:6px; text-align:center; color:#555;">${idx + 1}</td>
                 <td style="padding:6px; color:#555;">${r.id}</td>
-                <td style="padding:6px; max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${r.address}">${r.address}</td>
+                <td style="padding:6px; max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${r.address}">${r.address}</td>
                 <td style="padding:6px; font-weight:bold; color:${r.isAvail ? '#27ae60' : '#e74c3c'}">${r.isAvail ? 'CÒN' : 'HẾT'}</td>
                 <td style="padding:6px;">${r.priceTxt}</td>
             </tr>
         `).join('');
 
         modal.style.width = "95%";
-        modal.style.maxWidth = "480px";
+        modal.style.maxWidth = "450px";
         
         modal.innerHTML = `
             <h3 style="margin:0 0 10px; font-size:16px;">📊 KẾT QUẢ (${inStockCount}/${results.length} KHO CÒN HÀNG)</h3>
@@ -177,7 +164,7 @@
                 <table style="width:100%; border-collapse:collapse; text-align:left;">
                     <thead style="background:#f1f2f6; position:sticky; top:0;">
                         <tr>
-                            <th style="padding:8px 6px; text-align:center;">STT</th>
+                            <th style="padding:8px 6px;">STT</th>
                             <th style="padding:8px 6px;">Mã</th>
                             <th style="padding:8px 6px;">Chi Nhánh</th>
                             <th style="padding:8px 6px;">Kho</th>
@@ -189,16 +176,16 @@
             </div>
             <div style="display:flex; gap:10px;">
                 <button id="bhx-btn-close-final" style="padding:10px; background:#e74c3c; color:#fff; border:none; border-radius:6px; flex:1; font-weight:bold; cursor:pointer;">Đóng</button>
-                <button id="bhx-btn-dl" style="padding:10px; background:#3498db; color:#fff; border:none; border-radius:6px; flex:1.5; font-weight:bold; cursor:pointer;">📥 Tải CSV</button>
+                <button id="bhx-btn-dl" style="padding:10px; background:#3498db; color:#fff; border:none; border-radius:6px; flex:1; font-weight:bold; cursor:pointer;">📥 Tải CSV</button>
             </div>
         `;
 
-        // Tính năng Tải CSV (Thêm cột STT)
         document.getElementById("bhx-btn-close-final").onclick = () => overlay.remove();
         document.getElementById("bhx-btn-dl").onclick = () => {
+            // Đã THÊM CỘT STT vào bảng file CSV khi tải xuống
             let csv = "data:text/csv;charset=utf-8,\uFEFFSTT,Mã Cửa Hàng,Chi Nhánh,Trạng Thái,Giá Bán\n";
-            results.forEach((r, index) => {
-                csv += `${index + 1},${r.id},"${r.address.replace(/"/g, '""')}",${r.isAvail ? 'CÒN HÀNG' : 'HẾT HÀNG'},${r.priceTxt}\n`;
+            results.forEach((r, idx) => {
+                csv += `${idx + 1},${r.id},"${r.address.replace(/"/g, '""')}",${r.isAvail ? 'CÒN HÀNG' : 'HẾT HÀNG'},${r.priceTxt}\n`;
             });
             let link = document.createElement("a");
             link.href = encodeURI(csv);
